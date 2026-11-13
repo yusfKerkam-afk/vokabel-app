@@ -152,16 +152,25 @@
       </div>
 
       <div class="glass rounded-2xl p-5 sm:p-6 mb-6">
-        <h2 id="manage-deck-title" class="text-xl font-bold mb-4">Projektname</h2>
+        <div class="flex items-center justify-between mb-4">
+          <h2 id="manage-deck-title" class="text-xl font-bold">Projektname</h2>
+          <span id="edit-mode-indicator" class="hidden text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2.5 py-1 rounded-lg">Bearbeitungsmodus aktiv</span>
+        </div>
         <form id="add-card-form" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <input type="text" id="card-front-input" required placeholder="Vorderseite (Frage / Vokabel)"
             class="px-4 py-3 rounded-xl bg-slate-900/80 border border-slate-700 focus:border-indigo-500 focus:outline-none text-sm" />
           <input type="text" id="card-back-input" required placeholder="Rückseite (Antwort / Lösung)"
             class="px-4 py-3 rounded-xl bg-slate-900/80 border border-slate-700 focus:border-indigo-500 focus:outline-none text-sm" />
-          <button type="submit"
-            class="sm:col-span-2 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-medium text-sm transition">
-            + Karte hinzufügen
-          </button>
+          <div class="sm:col-span-2 flex gap-2">
+            <button type="submit" id="card-submit-btn"
+              class="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-medium text-sm transition">
+              + Karte hinzufügen
+            </button>
+            <button type="button" id="cancel-edit-btn" onclick="cancelEditCard()"
+              class="hidden px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 font-medium text-sm text-slate-300 transition">
+              Abbrechen
+            </button>
+          </div>
         </form>
       </div>
 
@@ -245,6 +254,7 @@
     let currentDeck = null;
     let currentCards = [];
     let studyIndex = 0;
+    let editingCardId = null; // Speichert ID, wenn eine Karte bearbeitet wird
 
     function showToast(msg, isError = false) {
       const t = document.getElementById('toast');
@@ -367,9 +377,10 @@
       loadDecks();
     }
 
-    // Karten verwalten
+    // Karten verwalten & bearbeiten
     async function openDeckManage(deckId, title) {
       currentDeck = { id: deckId, title };
+      cancelEditCard(); // Zurücksetzen falls vorher noch im Bearbeiten-Modus
       hideAllSections();
       document.getElementById('manage-section').classList.remove('hidden');
       document.getElementById('manage-deck-title').textContent = title;
@@ -386,35 +397,86 @@
         return;
       }
 
-      list.innerHTML = currentCards.map((c, idx) => `
+      list.innerHTML = currentCards.map((c) => `
         <div class="glass rounded-xl p-4 flex items-center justify-between gap-4">
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 flex-1 text-sm">
-            <div class="font-medium text-white">${c.front}</div>
-            <div class="text-indigo-300 sm:border-l sm:border-slate-700 sm:pl-4">${c.back}</div>
+            <div class="font-medium text-white">${escapeHtml(c.front)}</div>
+            <div class="text-indigo-300 sm:border-l sm:border-slate-700 sm:pl-4">${escapeHtml(c.back)}</div>
           </div>
-          <button onclick="deleteCard('${c.id}')" class="text-slate-500 hover:text-red-400 text-xs p-2">✕</button>
+          <div class="flex items-center gap-1">
+            <button onclick="startEditCard('${c.id}')" class="text-slate-400 hover:text-indigo-300 text-xs p-2 transition" title="Karte bearbeiten">✎</button>
+            <button onclick="deleteCard('${c.id}')" class="text-slate-500 hover:text-red-400 text-xs p-2 transition" title="Karte löschen">✕</button>
+          </div>
         </div>
       `).join('');
     }
 
+    // Hilfsfunktion zur Zeichensicherheit im HTML
+    function escapeHtml(str) {
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+
+    // Karte in den Bearbeitungsmodus laden
+    function startEditCard(id) {
+      const card = currentCards.find(c => c.id === id);
+      if (!card) return;
+
+      editingCardId = id;
+      document.getElementById('card-front-input').value = card.front;
+      document.getElementById('card-back-input').value = card.back;
+      
+      // UI anpassen für Bearbeiten
+      document.getElementById('card-submit-btn').textContent = '💾 Änderungen speichern';
+      document.getElementById('card-submit-btn').className = 'flex-1 py-3 rounded-xl bg-amber-600 hover:bg-amber-500 font-medium text-sm transition';
+      document.getElementById('cancel-edit-btn').classList.remove('hidden');
+      document.getElementById('edit-mode-indicator').classList.remove('hidden');
+      
+      document.getElementById('card-front-input').focus();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // Bearbeiten abbrechen
+    function cancelEditCard() {
+      editingCardId = null;
+      document.getElementById('card-front-input').value = '';
+      document.getElementById('card-back-input').value = '';
+      
+      document.getElementById('card-submit-btn').textContent = '+ Karte hinzufügen';
+      document.getElementById('card-submit-btn').className = 'sm:col-span-2 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-medium text-sm transition';
+      document.getElementById('cancel-edit-btn').classList.add('hidden');
+      document.getElementById('edit-mode-indicator').classList.add('hidden');
+    }
+
+    // Formular absenden (Entweder neu erstellen ODER bestehende Karte aktualisieren)
     document.getElementById('add-card-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const front = document.getElementById('card-front-input').value.trim();
       const back = document.getElementById('card-back-input').value.trim();
       if (!front || !back) return;
 
-      const { error } = await db.from('cards').insert([{ deck_id: currentDeck.id, front, back }]);
-      if (error) return showToast(error.message, true);
-
-      document.getElementById('card-front-input').value = '';
-      document.getElementById('card-back-input').value = '';
-      document.getElementById('card-front-input').focus();
+      if (editingCardId) {
+        // Update bestehende Karte
+        const { error } = await db.from('cards').update({ front, back }).eq('id', editingCardId);
+        if (error) return showToast(error.message, true);
+        showToast('Karte erfolgreich aktualisiert!');
+        cancelEditCard();
+      } else {
+        // Neue Karte einfügen
+        const { error } = await db.from('cards').insert([{ deck_id: currentDeck.id, front, back }]);
+        if (error) return showToast(error.message, true);
+        document.getElementById('card-front-input').value = '';
+        document.getElementById('card-back-input').value = '';
+        document.getElementById('card-front-input').focus();
+        showToast('Karte hinzugefügt!');
+      }
       loadCards();
     });
 
     async function deleteCard(id) {
+      if (editingCardId === id) cancelEditCard();
       await db.from('cards').delete().eq('id', id);
       loadCards();
+      showToast('Karte gelöscht');
     }
 
     // Lern-Modus
@@ -445,7 +507,7 @@
 
       document.getElementById('study-progress-text').textContent = `Karte ${studyIndex + 1} von ${currentCards.length}`;
       const percent = ((studyIndex + 1) / currentCards.length) * 100;
-      document.getElementById('study-progress-bar').style.width = `${percent}%`;
+      document.getElementById('study-progress-bar').style.width = `${percent}`;
     }
 
     function flipCard() {
