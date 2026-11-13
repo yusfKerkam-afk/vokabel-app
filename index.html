@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>FlashMind – Dein Lern-Studio</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background: radial-gradient(circle at top left, #1e1b4b, #0f172a 50%, #020617);
+      color: #f8fafc;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    .glass {
+      background: rgba(30, 41, 59, 0.55);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .glass-card {
+      background: linear-gradient(145deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9));
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+    }
+    /* 3D Flip Animation */
+    .perspective { perspective: 1200px; }
+    .flip-inner {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      transition: transform 0.65s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transform-style: preserve-3d;
+      cursor: pointer;
+    }
+    .flip-inner.is-flipped { transform: rotateY(180deg); }
+    .flip-front, .flip-back {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      -webkit-backface-visibility: hidden;
+      backface-visibility: hidden;
+      border-radius: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      text-align: center;
+    }
+    .flip-back {
+      transform: rotateY(180deg);
+      background: linear-gradient(145deg, rgba(49, 46, 129, 0.85), rgba(15, 23, 42, 0.95));
+      border: 1px solid rgba(129, 140, 248, 0.3);
+    }
+    /* Smooth Fade */
+    .fade-in { animation: fadeIn 0.35s ease-out forwards; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body class="antialiased selection:bg-indigo-500 selection:text-white">
+
+  <!-- Benachrichtigung (Toast) -->
+  <div id="toast" class="fixed top-5 right-5 z-50 hidden glass px-4 py-3 rounded-xl text-sm font-medium shadow-2xl transition-all duration-300"></div>
+
+  <!-- LOGIN / REGISTRIERUNG -->
+  <div id="auth-view" class="min-h-screen flex items-center justify-center p-4">
+    <div class="glass-card w-full max-w-md p-8 rounded-3xl fade-in">
+      <div class="text-center mb-8">
+        <div class="w-14 h-14 bg-indigo-600/20 border border-indigo-500/30 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl">✨</div>
+        <h1 class="text-2xl font-bold tracking-tight">FlashMind</h1>
+        <p class="text-slate-400 text-sm mt-1">Deine Lernkarten. Überall synchronisiert.</p>
+      </div>
+
+      <form id="auth-form" class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">E-Mail</label>
+          <input type="email" id="email" required placeholder="deine@email.de"
+            class="w-full px-4 py-3 rounded-xl bg-slate-900/80 border border-slate-700/80 focus:border-indigo-500 focus:outline-none text-white transition" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">Passwort</label>
+          <input type="password" id="password" required placeholder="Mindestens 6 Zeichen"
+            class="w-full px-4 py-3 rounded-xl bg-slate-900/80 border border-slate-700/80 focus:border-indigo-500 focus:outline-none text-white transition" />
+        </div>
+        <button type="submit" id="auth-submit-btn"
+          class="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] font-semibold text-white shadow-lg shadow-indigo-600/30 transition">
+          Einloggen
+        </button>
+      </form>
+
+      <div class="mt-6 text-center">
+        <button id="toggle-auth-mode" class="text-sm text-indigo-400 hover:text-indigo-300 transition">
+          Noch kein Konto? Jetzt kostenlos registrieren
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HAUPT-APP -->
+  <div id="app-view" class="hidden min-h-screen flex flex-col max-w-5xl mx-auto p-4 sm:p-6">
+    
+    <!-- Header -->
+    <header class="glass rounded-2xl px-5 py-3.5 flex items-center justify-between mb-6">
+      <div class="flex items-center gap-3 cursor-pointer" onclick="showDashboard()">
+        <span class="text-xl">✨</span>
+        <span class="font-bold text-lg tracking-tight">FlashMind</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <span id="user-email-display" class="hidden sm:inline text-xs text-slate-400"></span>
+        <button onclick="logout()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition">
+          Abmelden
+        </button>
+      </div>
+    </header>
+
+    <!-- 1. DASHBOARD (Lern-Projekte) -->
+    <main id="dashboard-section" class="fade-in flex-1">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+          <h2 class="text-2xl font-bold">Deine Lern-Projekte</h2>
+          <p class="text-slate-400 text-sm">Wähle ein Projekt zum Lernen oder erstelle ein neues.</p>
+        </div>
+        <button onclick="openNewDeckModal()"
+          class="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 font-medium text-sm shadow-lg shadow-indigo-600/25 transition flex items-center justify-center gap-2">
+          <span>+ Neues Lern-Projekt</span>
+        </button>
+      </div>
+
+      <div id="decks-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- Projekte werden hier geladen -->
+      </div>
+    </main>
+
+    <!-- 2. PROJEKT-VERWALTUNG (Karten hinzufügen/bearbeiten) -->
+    <section id="manage-section" class="hidden fade-in flex-1">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <button onclick="showDashboard()" class="text-sm text-slate-400 hover:text-white flex items-center gap-1 transition">
+          ← Zurück zur Übersicht
+        </button>
+        <button onclick="startStudyMode()" id="start-study-btn"
+          class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 font-semibold text-sm shadow-lg shadow-emerald-600/25 transition">
+          ▶ Jetzt Lernen starten
+        </button>
+      </div>
+
+      <div class="glass rounded-2xl p-5 sm:p-6 mb-6">
+        <h2 id="manage-deck-title" class="text-xl font-bold mb-4">Projektname</h2>
+        <form id="add-card-form" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <input type="text" id="card-front-input" required placeholder="Vorderseite (Frage / Vokabel)"
+            class="px-4 py-3 rounded-xl bg-slate-900/80 border border-slate-700 focus:border-indigo-500 focus:outline-none text-sm" />
+          <input type="text" id="card-back-input" required placeholder="Rückseite (Antwort / Lösung)"
+            class="px-4 py-3 rounded-xl bg-slate-900/80 border border-slate-700 focus:border-indigo-500 focus:outline-none text-sm" />
+          <button type="submit"
+            class="sm:col-span-2 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-medium text-sm transition">
+            + Karte hinzufügen
+          </button>
+        </form>
+      </div>
+
+      <div id="cards-list" class="space-y-2.5">
+        <!-- Kartenliste -->
+      </div>
+    </section>
+
+    <!-- 3. LERN-MODUS (Mittige 3D-Karte) -->
+    <section id="study-section" class="hidden fade-in flex-1 flex flex-col justify-between py-2">
+      <div class="flex items-center justify-between mb-4">
+        <button onclick="openDeckManage(currentDeck.id, currentDeck.title)" class="text-sm text-slate-400 hover:text-white transition">
+          ✕ Lernen beenden
+        </button>
+        <span id="study-progress-text" class="text-xs font-medium px-3 py-1 rounded-full glass text-indigo-300">
+          Karte 1 von 1
+        </span>
+        <button onclick="shuffleStudyCards()" class="text-xs px-3 py-1.5 rounded-lg glass hover:bg-slate-800 text-slate-300 transition">
+          🔀 Mischen
+        </button>
+      </div>
+
+      <!-- Fortschrittsbalken -->
+      <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mb-6">
+        <div id="study-progress-bar" class="h-full bg-indigo-500 transition-all duration-300" style="width: 0%"></div>
+      </div>
+
+      <!-- Zentrale Karte mit 3D-Wende-Effekt -->
+      <div class="flex-1 flex items-center justify-center my-2">
+        <div class="perspective w-full max-w-xl h-72 sm:h-96">
+          <div id="flashcard-inner" class="flip-inner" onclick="flipCard()">
+            <div class="flip-front glass-card">
+              <span class="text-xs uppercase tracking-widest text-slate-400 absolute top-5">Vorderseite • Tippen zum Wenden</span>
+              <p id="study-front-text" class="text-2xl sm:text-3xl font-bold leading-snug break-words max-w-full"></p>
+            </div>
+            <div class="flip-back">
+              <span class="text-xs uppercase tracking-widest text-indigo-300 absolute top-5">Lösung</span>
+              <p id="study-back-text" class="text-2xl sm:text-3xl font-bold text-white leading-snug break-words max-w-full"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Navigation Unten (Daumenfreundlich) -->
+      <div class="grid grid-cols-3 gap-3 max-w-xl w-full mx-auto mt-6">
+        <button onclick="prevCard()" class="py-3.5 rounded-xl glass hover:bg-slate-800 active:scale-95 font-medium text-sm transition">
+          ← Zurück
+        </button>
+        <button onclick="flipCard()" class="py-3.5 rounded-xl bg-indigo-600/30 border border-indigo-500/40 hover:bg-indigo-600/50 active:scale-95 font-semibold text-sm text-indigo-200 transition">
+          🔄 Wenden
+        </button>
+        <button onclick="nextCard()" class="py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 font-medium text-sm transition">
+          Weiter →
+        </button>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- MODAL: Neues Projekt -->
+  <div id="new-deck-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4 z-40">
+    <div class="glass-card w-full max-w-md p-6 rounded-2xl fade-in">
+      <h3 class="text-lg font-bold mb-4">Neues Lern-Projekt erstellen</h3>
+      <input type="text" id="new-deck-title" placeholder="z. B. Englisch Unit 3, Bio Klausur..."
+        class="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-700 focus:border-indigo-500 focus:outline-none text-sm mb-4" />
+      <div class="flex justify-end gap-2">
+        <button onclick="closeNewDeckModal()" class="px-4 py-2 rounded-xl text-sm text-slate-400 hover:text-white">Abbrechen</button>
+        <button onclick="createDeck()" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-sm font-medium">Erstellen</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Deine Supabase Verbindung
+    const SUPABASE_URL = 'https://gnebmmsararwepwpoeek.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_cUtMwo3RBXrT1cbVSbZsWw_36iYbSXD';
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let isRegisterMode = false;
+    let currentUser = null;
+    let currentDeck = null;
+    let currentCards = [];
+    let studyIndex = 0;
+
+    function showToast(msg, isError = false) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = `fixed top-5 right-5 z-50 px-4 py-3 rounded-xl text-sm font-medium shadow-2xl transition-all ${isError ? 'bg-red-900/90 border border-red-500 text-red-100' : 'glass text-emerald-300 border-emerald-500/30'}`;
+      t.classList.remove('hidden');
+      setTimeout(() => t.classList.add('hidden'), 3500);
+    }
+
+    // Auth Logik
+    document.getElementById('toggle-auth-mode').addEventListener('click', () => {
+      isRegisterMode = !isRegisterMode;
+      document.getElementById('auth-submit-btn').textContent = isRegisterMode ? 'Kostenlos registrieren' : 'Einloggen';
+      document.getElementById('toggle-auth-mode').textContent = isRegisterMode
+        ? 'Bereits ein Konto? Hier einloggen'
+        : 'Noch kein Konto? Jetzt kostenlos registrieren';
+    });
+
+    document.getElementById('auth-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+
+      if (isRegisterMode) {
+        const { error } = await db.auth.signUp({ email, password });
+        if (error) return showToast(error.message, true);
+        showToast('Registrierung erfolgreich! Prüfe ggf. deine E-Mails oder logge dich ein.');
+      } else {
+        const { error } = await db.auth.signInWithPassword({ email, password });
+        if (error) return showToast('Login fehlgeschlagen: ' + error.message, true);
+      }
+    });
+
+    async function logout() {
+      await db.auth.signOut();
+    }
+
+    db.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        currentUser = session.user;
+        document.getElementById('auth-view').classList.add('hidden');
+        document.getElementById('app-view').classList.remove('hidden');
+        document.getElementById('user-email-display').textContent = currentUser.email;
+        showDashboard();
+      } else {
+        currentUser = null;
+        document.getElementById('auth-view').classList.remove('hidden');
+        document.getElementById('app-view').classList.add('hidden');
+      }
+    });
+
+    // Navigation
+    function hideAllSections() {
+      document.getElementById('dashboard-section').classList.add('hidden');
+      document.getElementById('manage-section').classList.add('hidden');
+      document.getElementById('study-section').classList.add('hidden');
+    }
+
+    async function showDashboard() {
+      hideAllSections();
+      document.getElementById('dashboard-section').classList.remove('hidden');
+      await loadDecks();
+    }
+
+    // Decks laden & erstellen
+    async function loadDecks() {
+      const { data: decks, error } = await db.from('decks').select('*, cards(count)').order('created_at', { ascending: false });
+      if (error) return showToast('Fehler beim Laden', true);
+
+      const grid = document.getElementById('decks-grid');
+      if (!decks || decks.length === 0) {
+        grid.innerHTML = `<div class="col-span-full glass rounded-2xl p-8 text-center text-slate-400">Noch keine Lern-Projekte vorhanden. Klicke oben auf <b>+ Neues Lern-Projekt</b>!</div>`;
+        return;
+      }
+
+      grid.innerHTML = decks.map(deck => {
+        const count = deck.cards?.[0]?.count || 0;
+        return `
+          <div class="glass rounded-2xl p-5 hover:border-indigo-500/40 transition flex flex-col justify-between group">
+            <div class="cursor-pointer" onclick="openDeckManage('${deck.id}', '${deck.title.replace(/'/g, "\\'")}')">
+              <div class="flex justify-between items-start">
+                <h3 class="font-bold text-lg group-hover:text-indigo-300 transition">${deck.title}</h3>
+                <button onclick="event.stopPropagation(); deleteDeck('${deck.id}')" class="text-slate-500 hover:text-red-400 text-xs px-2 py-1">🗑️</button>
+              </div>
+              <p class="text-slate-400 text-xs mt-2">${count} ${count === 1 ? 'Karte' : 'Karten'}</p>
+            </div>
+            <div class="mt-5 pt-3 border-t border-slate-800 flex gap-2">
+              <button onclick="openDeckManage('${deck.id}', '${deck.title.replace(/'/g, "\\'")}')" class="flex-1 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium transition">Bearbeiten</button>
+              <button onclick="quickStudy('${deck.id}', '${deck.title.replace(/'/g, "\\'")}')" class="flex-1 py-2 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 text-xs font-semibold transition">Lernen ▶</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function openNewDeckModal() {
+      document.getElementById('new-deck-modal').classList.remove('hidden');
+      document.getElementById('new-deck-modal').classList.add('flex');
+      document.getElementById('new-deck-title').focus();
+    }
+    function closeNewDeckModal() {
+      document.getElementById('new-deck-modal').classList.add('hidden');
+      document.getElementById('new-deck-modal').classList.remove('flex');
+      document.getElementById('new-deck-title').value = '';
+    }
+
+    async function createDeck() {
+      const title = document.getElementById('new-deck-title').value.trim();
+      if (!title) return;
+      const { error } = await db.from('decks').insert([{ title, user_id: currentUser.id }]);
+      if (error) return showToast(error.message, true);
+      closeNewDeckModal();
+      showToast('Projekt erstellt!');
+      loadDecks();
+    }
+
+    async function deleteDeck(id) {
+      if (!confirm('Dieses Lern-Projekt wirklich löschen?')) return;
+      await db.from('decks').delete().eq('id', id);
+      loadDecks();
+    }
+
+    // Karten verwalten
+    async function openDeckManage(deckId, title) {
+      currentDeck = { id: deckId, title };
+      hideAllSections();
+      document.getElementById('manage-section').classList.remove('hidden');
+      document.getElementById('manage-deck-title').textContent = title;
+      await loadCards();
+    }
+
+    async function loadCards() {
+      const { data } = await db.from('cards').select('*').eq('deck_id', currentDeck.id).order('created_at', { ascending: true });
+      currentCards = data || [];
+      const list = document.getElementById('cards-list');
+      
+      if (currentCards.length === 0) {
+        list.innerHTML = `<p class="text-center text-slate-500 text-sm py-6">Füge oben deine erste Karteikarte hinzu.</p>`;
+        return;
+      }
+
+      list.innerHTML = currentCards.map((c, idx) => `
+        <div class="glass rounded-xl p-4 flex items-center justify-between gap-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 flex-1 text-sm">
+            <div class="font-medium text-white">${c.front}</div>
+            <div class="text-indigo-300 sm:border-l sm:border-slate-700 sm:pl-4">${c.back}</div>
+          </div>
+          <button onclick="deleteCard('${c.id}')" class="text-slate-500 hover:text-red-400 text-xs p-2">✕</button>
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('add-card-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const front = document.getElementById('card-front-input').value.trim();
+      const back = document.getElementById('card-back-input').value.trim();
+      if (!front || !back) return;
+
+      const { error } = await db.from('cards').insert([{ deck_id: currentDeck.id, front, back }]);
+      if (error) return showToast(error.message, true);
+
+      document.getElementById('card-front-input').value = '';
+      document.getElementById('card-back-input').value = '';
+      document.getElementById('card-front-input').focus();
+      loadCards();
+    });
+
+    async function deleteCard(id) {
+      await db.from('cards').delete().eq('id', id);
+      loadCards();
+    }
+
+    // Lern-Modus
+    async function quickStudy(deckId, title) {
+      currentDeck = { id: deckId, title };
+      const { data } = await db.from('cards').select('*').eq('deck_id', deckId).order('created_at', { ascending: true });
+      currentCards = data || [];
+      startStudyMode();
+    }
+
+    function startStudyMode() {
+      if (currentCards.length === 0) return showToast('Füge zuerst mindestens eine Karte hinzu!', true);
+      studyIndex = 0;
+      hideAllSections();
+      document.getElementById('study-section').classList.remove('hidden');
+      renderStudyCard();
+    }
+
+    function renderStudyCard() {
+      const cardEl = document.getElementById('flashcard-inner');
+      cardEl.classList.remove('is-flipped');
+
+      const card = currentCards[studyIndex];
+      setTimeout(() => {
+        document.getElementById('study-front-text').textContent = card.front;
+        document.getElementById('study-back-text').textContent = card.back;
+      }, 120);
+
+      document.getElementById('study-progress-text').textContent = `Karte ${studyIndex + 1} von ${currentCards.length}`;
+      const percent = ((studyIndex + 1) / currentCards.length) * 100;
+      document.getElementById('study-progress-bar').style.width = `${percent}%`;
+    }
+
+    function flipCard() {
+      document.getElementById('flashcard-inner').classList.toggle('is-flipped');
+    }
+
+    function nextCard() {
+      if (studyIndex < currentCards.length - 1) {
+        studyIndex++;
+        renderStudyCard();
+      } else {
+        showToast('🎉 Du hast alle Karten dieses Stapels durch!');
+        studyIndex = 0;
+        renderStudyCard();
+      }
+    }
+
+    function prevCard() {
+      if (studyIndex > 0) {
+        studyIndex--;
+        renderStudyCard();
+      }
+    }
+
+    function shuffleStudyCards() {
+      for (let i = currentCards.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [currentCards[i], currentCards[j]] = [currentCards[j], currentCards[i]];
+      }
+      studyIndex = 0;
+      renderStudyCard();
+      showToast('Karten gemischt!');
+    }
+  </script>
+</body>
+</html>
