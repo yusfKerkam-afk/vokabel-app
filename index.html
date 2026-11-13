@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>FlashMind – Dein Lern-Studio</title>
+  <!-- Versions-Marker für automatische Updates -->
+  <meta name="app-version" content="1.1.0">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -69,6 +71,15 @@
 
   <!-- Benachrichtigung (Toast) -->
   <div id="toast" class="fixed top-5 right-5 z-50 hidden glass px-4 py-3 rounded-xl text-sm font-medium shadow-2xl transition-all duration-300"></div>
+
+  <!-- UPDATE BENACHRICHTIGUNG BANNER (Unten Rechts) -->
+  <div id="update-banner" class="fixed bottom-5 right-5 z-50 hidden glass-card border border-indigo-500/50 px-5 py-4 rounded-2xl shadow-2xl flex items-center gap-3 fade-in">
+    <span class="text-xl">✨</span>
+    <div>
+      <h4 class="text-sm font-bold text-white">Update verfügbar!</h4>
+      <p class="text-xs text-slate-300">Neue Version wird geladen...</p>
+    </div>
+  </div>
 
   <!-- LOGIN / REGISTRIERUNG -->
   <div id="auth-view" class="min-h-screen flex items-center justify-center p-4">
@@ -254,7 +265,28 @@
     let currentDeck = null;
     let currentCards = [];
     let studyIndex = 0;
-    let editingCardId = null; // Speichert ID, wenn eine Karte bearbeitet wird
+    let editingCardId = null;
+
+    // Automatischer Versions-Checker (Prüft alle 2 Minuten im Hintergrund auf Updates)
+    const currentVersion = document.querySelector('meta[name="app-version"]').getAttribute('content');
+    setInterval(async () => {
+      try {
+        const response = await fetch(window.location.href + '?t=' + new Date().getTime());
+        const htmlText = await response.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(htmlText, 'text/html');
+        const remoteVersion = doc.querySelector('meta[name="app-version"]')?.getAttribute('content');
+        
+        if (remoteVersion && remoteVersion !== currentVersion) {
+          document.getElementById('update-banner').classList.remove('hidden');
+          setTimeout(() => {
+            window.location.reload(true);
+          }, 2000);
+        }
+      } catch (e) {
+        // Ignorieren falls offline
+      }
+    }, 120000); // 120.000 ms = 2 Minuten
 
     function showToast(msg, isError = false) {
       const t = document.getElementById('toast');
@@ -380,7 +412,7 @@
     // Karten verwalten & bearbeiten
     async function openDeckManage(deckId, title) {
       currentDeck = { id: deckId, title };
-      cancelEditCard(); // Zurücksetzen falls vorher noch im Bearbeiten-Modus
+      cancelEditCard();
       hideAllSections();
       document.getElementById('manage-section').classList.remove('hidden');
       document.getElementById('manage-deck-title').textContent = title;
@@ -411,12 +443,10 @@
       `).join('');
     }
 
-    // Hilfsfunktion zur Zeichensicherheit im HTML
     function escapeHtml(str) {
       return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
     }
 
-    // Karte in den Bearbeitungsmodus laden
     function startEditCard(id) {
       const card = currentCards.find(c => c.id === id);
       if (!card) return;
@@ -425,7 +455,6 @@
       document.getElementById('card-front-input').value = card.front;
       document.getElementById('card-back-input').value = card.back;
       
-      // UI anpassen für Bearbeiten
       document.getElementById('card-submit-btn').textContent = '💾 Änderungen speichern';
       document.getElementById('card-submit-btn').className = 'flex-1 py-3 rounded-xl bg-amber-600 hover:bg-amber-500 font-medium text-sm transition';
       document.getElementById('cancel-edit-btn').classList.remove('hidden');
@@ -435,7 +464,6 @@
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    // Bearbeiten abbrechen
     function cancelEditCard() {
       editingCardId = null;
       document.getElementById('card-front-input').value = '';
@@ -447,7 +475,6 @@
       document.getElementById('edit-mode-indicator').classList.add('hidden');
     }
 
-    // Formular absenden (Entweder neu erstellen ODER bestehende Karte aktualisieren)
     document.getElementById('add-card-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const front = document.getElementById('card-front-input').value.trim();
@@ -455,13 +482,11 @@
       if (!front || !back) return;
 
       if (editingCardId) {
-        // Update bestehende Karte
         const { error } = await db.from('cards').update({ front, back }).eq('id', editingCardId);
         if (error) return showToast(error.message, true);
         showToast('Karte erfolgreich aktualisiert!');
         cancelEditCard();
       } else {
-        // Neue Karte einfügen
         const { error } = await db.from('cards').insert([{ deck_id: currentDeck.id, front, back }]);
         if (error) return showToast(error.message, true);
         document.getElementById('card-front-input').value = '';
@@ -507,7 +532,7 @@
 
       document.getElementById('study-progress-text').textContent = `Karte ${studyIndex + 1} von ${currentCards.length}`;
       const percent = ((studyIndex + 1) / currentCards.length) * 100;
-      document.getElementById('study-progress-bar').style.width = `${percent}`;
+      document.getElementById('study-progress-bar').style.width = `${percent}%`;
     }
 
     function flipCard() {
