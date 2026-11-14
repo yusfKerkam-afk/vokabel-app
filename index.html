@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>FlashMind – Dein Lern-Studio</title>
   <!-- Versions-Marker für automatische Updates -->
-  <meta name="app-version" content="1.1.0">
+  <meta name="app-version" content="1.2.0">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -72,7 +72,7 @@
   <!-- Benachrichtigung (Toast) -->
   <div id="toast" class="fixed top-5 right-5 z-50 hidden glass px-4 py-3 rounded-xl text-sm font-medium shadow-2xl transition-all duration-300"></div>
 
-  <!-- UPDATE BENACHRICHTIGUNG BANNER (Unten Rechts) -->
+  <!-- UPDATE BENACHRICHTIGUNG BANNER -->
   <div id="update-banner" class="fixed bottom-5 right-5 z-50 hidden glass-card border border-indigo-500/50 px-5 py-4 rounded-2xl shadow-2xl flex items-center gap-3 fade-in">
     <span class="text-xl">✨</span>
     <div>
@@ -150,7 +150,7 @@
       </div>
     </main>
 
-    <!-- 2. PROJEKT-VERWALTUNG (Karten hinzufügen/bearbeiten) -->
+    <!-- 2. PROJEKT-VERWALTUNG -->
     <section id="manage-section" class="hidden fade-in flex-1">
       <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
         <button onclick="showDashboard()" class="text-sm text-slate-400 hover:text-white flex items-center gap-1 transition">
@@ -190,7 +190,7 @@
       </div>
     </section>
 
-    <!-- 3. LERN-MODUS (Mittige 3D-Karte) -->
+    <!-- 3. LERN-MODUS -->
     <section id="study-section" class="hidden fade-in flex-1 flex flex-col justify-between py-2">
       <div class="flex items-center justify-between mb-4">
         <button onclick="openDeckManage(currentDeck.id, currentDeck.title)" class="text-sm text-slate-400 hover:text-white transition">
@@ -204,12 +204,10 @@
         </button>
       </div>
 
-      <!-- Fortschrittsbalken -->
       <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mb-6">
         <div id="study-progress-bar" class="h-full bg-indigo-500 transition-all duration-300" style="width: 0%"></div>
       </div>
 
-      <!-- Zentrale Karte mit 3D-Wende-Effekt -->
       <div class="flex-1 flex items-center justify-center my-2">
         <div class="perspective w-full max-w-xl h-72 sm:h-96">
           <div id="flashcard-inner" class="flip-inner" onclick="flipCard()">
@@ -225,7 +223,6 @@
         </div>
       </div>
 
-      <!-- Navigation Unten (Daumenfreundlich) -->
       <div class="grid grid-cols-3 gap-3 max-w-xl w-full mx-auto mt-6">
         <button onclick="prevCard()" class="py-3.5 rounded-xl glass hover:bg-slate-800 active:scale-95 font-medium text-sm transition">
           ← Zurück
@@ -255,7 +252,6 @@
   </div>
 
   <script>
-    // Deine Supabase Verbindung
     const SUPABASE_URL = 'https://gnebmmsararwepwpoeek.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_cUtMwo3RBXrT1cbVSbZsWw_36iYbSXD';
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -267,7 +263,7 @@
     let studyIndex = 0;
     let editingCardId = null;
 
-    // Automatischer Versions-Checker (Prüft alle 2 Minuten im Hintergrund auf Updates)
+    // Automatischer Versions-Checker
     const currentVersion = document.querySelector('meta[name="app-version"]').getAttribute('content');
     setInterval(async () => {
       try {
@@ -279,14 +275,10 @@
         
         if (remoteVersion && remoteVersion !== currentVersion) {
           document.getElementById('update-banner').classList.remove('hidden');
-          setTimeout(() => {
-            window.location.reload(true);
-          }, 2000);
+          setTimeout(() => { window.location.reload(true); }, 2000);
         }
-      } catch (e) {
-        // Ignorieren falls offline
-      }
-    }, 120000); // 120.000 ms = 2 Minuten
+      } catch (e) {}
+    }, 120000);
 
     function showToast(msg, isError = false) {
       const t = document.getElementById('toast');
@@ -296,7 +288,6 @@
       setTimeout(() => t.classList.add('hidden'), 3500);
     }
 
-    // Auth Logik
     document.getElementById('toggle-auth-mode').addEventListener('click', () => {
       isRegisterMode = !isRegisterMode;
       document.getElementById('auth-submit-btn').textContent = isRegisterMode ? 'Kostenlos registrieren' : 'Einloggen';
@@ -313,7 +304,7 @@
       if (isRegisterMode) {
         const { error } = await db.auth.signUp({ email, password });
         if (error) return showToast(error.message, true);
-        showToast('Registrierung erfolgreich! Prüfe ggf. deine E-Mails oder logge dich ein.');
+        showToast('Registrierung erfolgreich! Bitte logge dich jetzt ein.');
       } else {
         const { error } = await db.auth.signInWithPassword({ email, password });
         if (error) return showToast('Login fehlgeschlagen: ' + error.message, true);
@@ -324,12 +315,15 @@
       await db.auth.signOut();
     }
 
-    db.auth.onAuthStateChange((event, session) => {
+    db.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         currentUser = session.user;
         document.getElementById('auth-view').classList.add('hidden');
         document.getElementById('app-view').classList.remove('hidden');
         document.getElementById('user-email-display').textContent = currentUser.email;
+        
+        // Prüfen, ob der Nutzer zum ersten Mal da ist (keine Decks hat) und Vorlagen erstellen
+        await createDefaultDecksIfNeeded();
         showDashboard();
       } else {
         currentUser = null;
@@ -338,7 +332,34 @@
       }
     });
 
-    // Navigation
+    // Automatische Start-Vorlagen für neue Nutzer anlegen
+    async function createDefaultDecksIfNeeded() {
+      const { data: existingDecks } = await db.from('decks').select('id').eq('user_id', currentUser.id);
+      if (existingDecks && existingDecks.length > 0) return; // Hat schon Decks, nichts tun
+
+      // Vorlage 1: Englisch
+      const { data: deck1 } = await db.from('decks').insert([{ title: '🇬🇧 Wichtigste Englisch-Wörter', user_id: currentUser.id }]).select().single();
+      if (deck1) {
+        await db.from('cards').insert([
+          { deck_id: deck1.id, front: 'to achieve', back: 'erreichen / verwirklichen' },
+          { deck_id: deck1.id, front: 'curious', back: 'neugierig' },
+          { deck_id: deck1.id, front: 'sustainable', back: 'nachhaltig' },
+          { deck_id: deck1.id, front: 'to improve', back: 'verbessern' }
+        ]);
+      }
+
+      // Vorlage 2: Mathe & Logik
+      const { data: deck2 } = await db.from('decks').insert([{ title: '📐 Mathe & Logik Grundlagen', user_id: currentUser.id }]).select().single();
+      if (deck2) {
+        await db.from('cards').insert([
+          { deck_id: deck2.id, front: 'Flächeninhalt Kreis', back: 'A = π · r²' },
+          { deck_id: deck2.id, front: 'Satz des Pythagoras', back: 'a² + b² = c²' },
+          { deck_id: deck2.id, front: 'Was ist die Wurzel aus 144?', back: '12' },
+          { deck_id: deck2.id, front: 'Ableitung von x²', back: '2x' }
+        ]);
+      }
+    }
+
     function hideAllSections() {
       document.getElementById('dashboard-section').classList.add('hidden');
       document.getElementById('manage-section').classList.add('hidden');
@@ -351,7 +372,6 @@
       await loadDecks();
     }
 
-    // Decks laden & erstellen
     async function loadDecks() {
       const { data: decks, error } = await db.from('decks').select('*, cards(count)').order('created_at', { ascending: false });
       if (error) return showToast('Fehler beim Laden', true);
@@ -369,7 +389,7 @@
             <div class="cursor-pointer" onclick="openDeckManage('${deck.id}', '${deck.title.replace(/'/g, "\\'")}')">
               <div class="flex justify-between items-start">
                 <h3 class="font-bold text-lg group-hover:text-indigo-300 transition">${deck.title}</h3>
-                <button onclick="event.stopPropagation(); deleteDeck('${deck.id}')" class="text-slate-500 hover:text-red-400 text-xs px-2 py-1">🗑️</button>
+                <button onclick="event.stopPropagation(); deleteDeck('${deck.id}')" class="text-slate-500 hover:text-red-400 text-xs px-2 py-1" title="Projekt löschen">🗑️</button>
               </div>
               <p class="text-slate-400 text-xs mt-2">${count} ${count === 1 ? 'Karte' : 'Karten'}</p>
             </div>
@@ -404,12 +424,12 @@
     }
 
     async function deleteDeck(id) {
-      if (!confirm('Dieses Lern-Projekt wirklich löschen?')) return;
+      if (!confirm('Dieses Lern-Projekt (inkl. aller Karten) wirklich löschen?')) return;
       await db.from('decks').delete().eq('id', id);
       loadDecks();
+      showToast('Projekt gelöscht');
     }
 
-    // Karten verwalten & bearbeiten
     async function openDeckManage(deckId, title) {
       currentDeck = { id: deckId, title };
       cancelEditCard();
@@ -504,7 +524,6 @@
       showToast('Karte gelöscht');
     }
 
-    // Lern-Modus
     async function quickStudy(deckId, title) {
       currentDeck = { id: deckId, title };
       const { data } = await db.from('cards').select('*').eq('deck_id', deckId).order('created_at', { ascending: true });
